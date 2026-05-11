@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,7 +10,7 @@ import {
   upsertMyMood,
   type Mood,
 } from '@/lib/moods';
-import { SELFIE_EMOJI, uploadMoodSelfie } from '@/lib/mood-selfies';
+import { SELFIE_EMOJI, selfiePath, uploadMoodSelfie } from '@/lib/mood-selfies';
 import { useSessionStore } from '@/stores/session';
 import { Button } from '@/components/ui/Button';
 import { InkTextarea } from '@/components/ui/InkTextarea';
@@ -56,8 +56,22 @@ export function Moods() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Selfie capture state — `selfieFile` holds the captured photo until save.
+  // `previewUrl` is an object URL for the captured file, rendered as the tile
+  // face while the user is reviewing the shot. Cleared on save / cancel so the
+  // camera icon comes back.
   const selfieInputRef = useRef<HTMLInputElement>(null);
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selfieFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selfieFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selfieFile]);
 
   const effectiveEmoji = selectedEmoji ?? myToday?.emoji ?? null;
   const effectiveNote = selectedEmoji === null && note === '' ? (myToday?.note ?? '') : note;
@@ -87,6 +101,15 @@ export function Moods() {
       // skip the upload and just (re)save the mood row.
       if (effectiveEmoji === SELFIE_EMOJI && selfieFile) {
         await uploadMoodSelfie(selfieFile, today);
+        // Path is the same each time (one selfie per user/date), so the cached
+        // signed URL still works — but the bytes behind it changed. Invalidate
+        // so SelfieAvatar refetches a new signed URL (different JWT) and the
+        // browser image cache misses, picking up the new photo.
+        if (coupleId && myUserId) {
+          queryClient.invalidateQueries({
+            queryKey: ['mood-selfie-url', selfiePath(coupleId, myUserId, today)],
+          });
+        }
       }
       if (effectiveEmoji === SELFIE_EMOJI && !selfieFile && myToday?.emoji !== SELFIE_EMOJI) {
         setErrorMsg('请先自拍一张');
@@ -148,7 +171,13 @@ export function Moods() {
                 ].join(' ')}
                 aria-pressed={isActive}
               >
-                {isSelfie ? (
+                {isSelfie && previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full rounded-2xl object-cover"
+                  />
+                ) : isSelfie ? (
                   <CameraIcon className="h-9 w-9 text-ink-700" />
                 ) : (
                   <MoodIcon emoji={p.id} className="h-10 w-10" />
