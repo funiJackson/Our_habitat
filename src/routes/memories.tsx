@@ -38,11 +38,6 @@ export function Memories() {
 
   const mediaQuery = useQuery({ queryKey, queryFn: listMedia });
 
-  const uploadMut = useMutation({
-    mutationFn: (file: File) => uploadPhoto(file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  });
-
   const deleteMut = useMutation({
     mutationFn: (item: MediaItem) => deleteMedia(item),
     onSuccess: () => {
@@ -51,17 +46,34 @@ export function Memories() {
     },
   });
 
+  // Multi-file upload — iterate sequentially so we can show progress and so
+  // browser-image-compression's single web worker doesn't get overwhelmed.
+  // We bypass useMutation here to avoid invalidating the list N times.
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+
   async function onFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setErrorMsg(null);
-    try {
-      await uploadMut.mutateAsync(file);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '上传失败');
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    setUploadProgress({ current: 0, total: files.length });
+
+    let failures = 0;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        await uploadPhoto(files[i]);
+      } catch (err) {
+        failures++;
+        console.error('upload failed', err);
+      }
+      setUploadProgress({ current: i + 1, total: files.length });
     }
+
+    await queryClient.invalidateQueries({ queryKey });
+    setUploadProgress(null);
+    if (failures > 0) {
+      setErrorMsg(`${files.length - failures}/${files.length} 张上传成功，其余失败`);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   const items = mediaQuery.data ?? [];
@@ -105,17 +117,25 @@ export function Memories() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={onFileChange}
       />
       <Button
-        className="mb-6 w-full"
+        className="mb-2 w-full"
         size="lg"
         onClick={() => fileInputRef.current?.click()}
-        isLoading={uploadMut.isPending}
+        isLoading={uploadProgress !== null}
+        disabled={uploadProgress !== null}
       >
         + 添加照片
       </Button>
+
+      {uploadProgress && (
+        <p className="mb-4 text-center text-sm text-ink-500">
+          上传中 {uploadProgress.current}/{uploadProgress.total}…
+        </p>
+      )}
 
       {errorMsg && <p className="mb-4 text-center text-sm text-vermillion-500">{errorMsg}</p>}
 
