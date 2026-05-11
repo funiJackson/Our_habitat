@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+@theme {
+  /* === Color tokens — warm, low-saturation === */
+  --color-paper: #FFFCF8;
+  /* 宣纸 — three layered paper tones for ink-wash compositions */
+  --color-paper-rice: #FAF6EC;
+  --color-paper-mist: #F2EAD8;
+  --color-paper-edge: #E8DEC4;
+
+  --color-blush-50: #FFF5F2;
+  --color-blush-100: #FCE8E0;
+  --color-blush-200: #FAD9CF;
+  --color-blush-300: #F2BFAF;
+  --color-blush-400: #ED9E84;
+  --color-blush-500: #E8A48F;
+  --color-blush-600: #D08066;
+  --color-blush-700: #B07360;
+
+  --color-cream-50: #FFFBF2;
+  --color-cream-100: #FBF5DE;
+  --color-cream-200: #F5EBC9;
+  --color-cream-500: #D9C68A;
+
+  --color-sky-50: #F0F6FB;
+  --color-sky-100: #E0EDF6;
+  --color-sky-200: #CBDFEE;
+  --color-sky-500: #7FA8C9;
+
+  --color-ink-900: #2A2622;
+  --color-ink-700: #3F3933;
+  --color-ink-600: #5C544D;
+  --color-ink-500: #807770;
+  --color-ink-400: #9C928A;
+  --color-ink-300: #B8AFA8;
+  --color-ink-200: #D6CFC8;
+  --color-ink-100: #ECE6E0;
+
+  /* 墨 — five tonal washes (rgba) for layered ink illusion */
+  --color-ink-wash-1: rgba(42, 38, 34, 0.06);
+  --color-ink-wash-2: rgba(42, 38, 34, 0.14);
+  --color-ink-wash-3: rgba(42, 38, 34, 0.32);
+  --color-ink-wash-4: rgba(42, 38, 34, 0.55);
+  --color-ink-wash-5: rgba(42, 38, 34, 0.85);
+
+  /* 朱砂 — vermillion accent (red string, seal, brush check) */
+  --color-vermillion-300: #E89F8A;
+  --color-vermillion-500: #C73E2E;
+  --color-vermillion-700: #8E2A1F;
+
+  /* === Radius tokens === */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* === Font families === */
+  --font-sans: 'Inter', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+  --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
+  --font-brush: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', cursive;
+  /* Existing font-display references re-aliased to brush for graceful upgrade. */
+  --font-display: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', cursive;
+}
+
+/* === Base styles ===
+   #root is the scroll container. body is locked to viewport so iOS rubber-band
+   has nothing to bounce, and safe-area insets sit on #root so they don't push
+   the document past viewport height. dvh handles iOS dynamic toolbar resizing.
+*/
+html, body, #root {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background-color: var(--color-paper-rice);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 宣纸纹理 — fixed-position SVG turbulence noise tinted warm-brown.
+   Single layer, scoped to body, GPU-cacheable after first paint. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.50  0 0 0 0 0.42  0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  opacity: 0.7;
+}
+
+/* Disable iOS text-size auto-adjust */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Hide scrollbar on Webkit but keep functionality */
+::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+
+/* Selection color */
+::selection {
+  background: var(--color-blush-200);
+  color: var(--color-ink-900);
+}
+
+/* === Ink primitives — gentle breathing wobble for brush lines === */
+@keyframes ink-brush-breath {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1); opacity: 0.92; }
+  50%      { transform: translate3d(0, 0.5px, 0) scaleY(1.02); opacity: 1; }
+}
+
+.ink-brush-wobble {
+  animation: ink-brush-breath 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-brush-wobble { animation: none; }
+}
