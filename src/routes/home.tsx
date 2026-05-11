@@ -14,11 +14,7 @@ import {
 import { listWishes, type Wish } from '@/lib/wishes';
 import { useSessionStore } from '@/stores/session';
 import { signOut } from '@/lib/auth';
-import {
-  MONTH_NAMES_CN,
-  currentYearMonth,
-  daysLeftInCurrentMonth,
-} from '@/lib/dates';
+import { MONTH_NAMES_CN, currentYearMonth } from '@/lib/dates';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { InkTextarea } from '@/components/ui/InkTextarea';
@@ -262,15 +258,13 @@ function ThemeHero({ theme, isLoading }: { theme: MonthlyTheme | null; isLoading
               )}
             </div>
             <div className="flex items-start gap-1">
-              {showSummaryAffordance() && (
-                <Link
-                  to={`/summary/${currentYearMonth()}`}
-                  className="font-brush text-sm leading-none text-vermillion-500 px-3 py-1.5 rounded-sm hover:text-vermillion-700 transition-colors"
-                  aria-label="本月总结"
-                >
-                  封
-                </Link>
-              )}
+              <Link
+                to={`/summary/${currentYearMonth()}`}
+                className="font-brush text-sm leading-none text-vermillion-500 px-3 py-1.5 rounded-sm hover:text-vermillion-700 transition-colors"
+                aria-label="本月总结"
+              >
+                封
+              </Link>
               <button
                 type="button"
                 onClick={startEdit}
@@ -421,15 +415,6 @@ function PowerIcon({ size = 22 }: { size?: number }) {
       />
     </svg>
   );
-}
-
-/**
- * Show the 封 (monthly summary) shortcut on the theme card during the last
- * 3 days of the month. Dev builds always show it for easier iteration.
- */
-function showSummaryAffordance(): boolean {
-  if (import.meta.env.DEV) return true;
-  return daysLeftInCurrentMonth() <= 2;
 }
 
 function hashString(s: string): number {
