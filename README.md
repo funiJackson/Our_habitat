@@ -130,4 +130,20 @@ CLAUDE.md                 # 给 AI 编程助手的项目说明
 
 ---
 
+## ✦ Deploy (Vercel)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FfuniJackson%2FOur_habitat)
+
+1. **Import** the repo on [vercel.com/new](https://vercel.com/new). Vercel auto-detects the Vite preset — build command `npm run build`, output `dist`.
+2. **Environment variables** (Settings → Environment Variables):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+3. **Deploy**. The `vercel.json` in the repo handles SPA fallback (`/*` → `/index.html`), long-cache for hashed assets, and no-cache for `sw.js` so PWA updates land on the next visit.
+
+Future deploys: just `git push` — Vercel rebuilds on every commit to `main`.
+
+---
+
 详细工程注记见 [`CLAUDE.md`](./CLAUDE.md)；过往踩过的坑见 [`docs/solutions/`](./docs/solutions/)。
+
+License: [MIT](./LICENSE).
