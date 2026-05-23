@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { motion } from 'motion/react';
+import { BleedFrame } from '@/components/ink/BleedFrame';
 
 interface LetterEnvelopeProps {
   state?: 'sealed' | 'open';
@@ -12,8 +13,12 @@ interface LetterEnvelopeProps {
 
 /**
  * A folded paper letter with a triangular flap. When `state` is 'sealed', the
- * flap covers the upper half (paired with `<RedString>` for the binding).
- * When 'open', the flap fades out so the body content reads through cleanly.
+ * flap covers the upper half (paired with `<RedString>` for the binding) and
+ * the body keeps a fixed envelope aspect.
+ *
+ * When 'open', the letter unfurls into a readable sheet that grows with its
+ * content and scrolls internally once the message runs long — so a letter of
+ * any length can be read in full rather than being clipped by the envelope.
  */
 export function LetterEnvelope({
   state = 'sealed',
@@ -24,6 +29,19 @@ export function LetterEnvelope({
   const w = width;
   const h = Math.round(w * 0.72);
   const flapH = h * 0.55;
+
+  if (state === 'open') {
+    return (
+      <BleedFrame intensity="soft" radius={3} className={className} style={{ width: w }}>
+        <div
+          className="max-h-[62vh] overflow-y-auto overscroll-contain rounded-[3px] bg-paper-mist px-3 py-2"
+          style={{ minHeight: h }}
+        >
+          {children}
+        </div>
+      </BleedFrame>
+    );
+  }
 
   return (
     <div
@@ -77,7 +95,7 @@ export function LetterEnvelope({
       <div
         className="absolute inset-x-0 flex items-center justify-center px-5"
         style={{
-          top: state === 'sealed' ? flapH : 0,
+          top: flapH,
           bottom: 0,
         }}
       >

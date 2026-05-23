@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import { motion, useReducedMotion } from 'motion/react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   fetchMonthlySummary,
   getBatchSignedUrls,
@@ -20,6 +20,9 @@ import { PictureCapsuleIcon } from '@/components/ink/CapsuleKindIcons';
 import { HeroIllustration } from '@/components/HeroIllustration';
 import { SelfieAvatar } from '@/components/SelfieAvatar';
 import { MoodIcon } from '@/components/MoodIcon';
+import { MoodDetail } from '@/components/MoodDetail';
+import { CapsuleReveal } from '@/components/CapsuleReveal';
+import { CapsuleStack } from '@/components/CapsuleStack';
 
 const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
 const PHOTO_WALL_CAP = 24;
@@ -27,6 +30,7 @@ const PHOTO_WALL_CAP = 24;
 export function Summary() {
   const { yearMonth } = useParams<{ yearMonth: string }>();
   const myUserId = useSessionStore((s) => s.user?.id) ?? null;
+  const queryClient = useQueryClient();
 
   const validYM = !!yearMonth && YEAR_MONTH_RE.test(yearMonth);
   const summaryQuery = useQuery({
@@ -35,6 +39,10 @@ export function Summary() {
     enabled: validYM && !!myUserId,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Tapping a mood tile or a capsule opens its fullscreen viewer.
+  const [moodDetail, setMoodDetail] = useState<{ mood: Mood; label: string } | null>(null);
+  const [revealing, setRevealing] = useState<TimeCapsule | null>(null);
 
   if (!validYM) return <Navigate to="/" replace />;
   if (!myUserId) return null;
@@ -70,26 +78,62 @@ export function Summary() {
     s.stats.capsulesOpenedCount === 0;
 
   return (
-    <div className="mx-auto max-w-md px-6 pb-20 pt-10">
-      <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
+    <>
+      <div className="mx-auto max-w-md px-6 pb-20 pt-10">
+        <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
 
-      <TitleSection summary={s} />
+        <TitleSection summary={s} />
 
-      {isWholeMonthEmpty ? (
-        <p className="mt-12 text-center font-serif text-ink-500">
-          这个月安静地过去了。
-        </p>
-      ) : (
-        <>
-          <StatsPoem summary={s} />
-          <WishesSection wishes={s.wishes} />
-          <MoodMosaic summary={s} />
-          <PhotoWall summary={s} />
-          <CapsulesSection summary={s} />
-          <ClosingFlourish summary={s} />
-        </>
-      )}
-    </div>
+        {isWholeMonthEmpty ? (
+          <p className="mt-12 text-center font-serif text-ink-500">
+            这个月安静地过去了。
+          </p>
+        ) : (
+          <>
+            <StatsPoem summary={s} />
+            <WishesSection wishes={s.wishes} />
+            <MoodMosaic
+              summary={s}
+              onOpenMood={(mood, label) => setMoodDetail({ mood, label })}
+            />
+            <PhotoWall summary={s} />
+            <CapsulesSection summary={s} onOpenCapsule={setRevealing} />
+            <ClosingFlourish summary={s} />
+          </>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {moodDetail && (
+          <MoodDetail
+            key={`${moodDetail.mood.user_id}|${moodDetail.mood.date}`}
+            mood={moodDetail.mood}
+            coupleId={s.coupleId}
+            authorLabel={moodDetail.label}
+            onClose={() => setMoodDetail(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {revealing && (
+          <CapsuleReveal
+            key={revealing.id}
+            capsule={revealing}
+            myId={s.myUserId}
+            partnerName={s.partnerName ?? 'TA'}
+            onClose={() => {
+              setRevealing(null);
+              // Opening a capsule may have marked it read — refresh the summary
+              // so its stamp flips 待启 → 已启 without a manual reload.
+              queryClient.invalidateQueries({
+                queryKey: ['monthly-summary', yearMonth, myUserId],
+              });
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -248,7 +292,13 @@ function WishesSection({ wishes }: { wishes: Wish[] }) {
 
 // ---- 4. Mood mosaic -------------------------------------------------------
 
-function MoodMosaic({ summary }: { summary: MonthlySummary }) {
+function MoodMosaic({
+  summary,
+  onOpenMood,
+}: {
+  summary: MonthlySummary;
+  onOpenMood: (mood: Mood, label: string) => void;
+}) {
   const days = useMemo(() => {
     const out: string[] = [];
     for (let d = 1; d <= summary.daysInMonth; d++) {
@@ -285,6 +335,7 @@ function MoodMosaic({ summary }: { summary: MonthlySummary }) {
         days={days}
         lookup={lookup}
         coupleId={summary.coupleId}
+        onOpen={onOpenMood}
       />
       {summary.partnerId && (
         <div className="mt-4">
@@ -294,6 +345,7 @@ function MoodMosaic({ summary }: { summary: MonthlySummary }) {
             days={days}
             lookup={lookup}
             coupleId={summary.coupleId}
+            onOpen={onOpenMood}
           />
         </div>
       )}
@@ -312,12 +364,14 @@ function MoodRow({
   days,
   lookup,
   coupleId,
+  onOpen,
 }: {
   label: string;
   userId: string;
   days: string[];
   lookup: Map<string, Mood>;
   coupleId: string | null;
+  onOpen: (mood: Mood, label: string) => void;
 }) {
   return (
     <div>
@@ -326,28 +380,41 @@ function MoodRow({
         <div className="flex gap-1">
           {days.map((date) => {
             const mood = lookup.get(`${userId}|${date}`);
+            const cellClass = [
+              'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full',
+              mood ? 'bg-paper-mist' : 'bg-paper',
+            ].join(' ');
+            const face =
+              mood && mood.emoji === SELFIE_EMOJI && coupleId ? (
+                <SelfieAvatar
+                  coupleId={coupleId}
+                  userId={mood.user_id}
+                  date={mood.date}
+                  className="h-full w-full rounded-full"
+                />
+              ) : mood ? (
+                <MoodIcon emoji={mood.emoji} className="h-5 w-5" />
+              ) : (
+                <span className="text-ink-200">·</span>
+              );
+
+            if (!mood) {
+              return (
+                <div key={date} className={cellClass}>
+                  {face}
+                </div>
+              );
+            }
             return (
-              <div
+              <button
                 key={date}
-                className={[
-                  'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full',
-                  mood ? 'bg-paper-mist' : 'bg-paper',
-                ].join(' ')}
-                title={mood?.note ?? ''}
+                type="button"
+                className={`${cellClass} transition-transform active:scale-95`}
+                onClick={() => onOpen(mood, label)}
+                aria-label={`查看${label} ${date.slice(8)}日的心情`}
               >
-                {mood && mood.emoji === SELFIE_EMOJI && coupleId ? (
-                  <SelfieAvatar
-                    coupleId={coupleId}
-                    userId={mood.user_id}
-                    date={mood.date}
-                    className="h-full w-full rounded-full"
-                  />
-                ) : mood ? (
-                  <MoodIcon emoji={mood.emoji} className="h-5 w-5" />
-                ) : (
-                  <span className="text-ink-200">·</span>
-                )}
-              </div>
+                {face}
+              </button>
             );
           })}
         </div>
@@ -426,7 +493,13 @@ function PhotoWall({ summary }: { summary: MonthlySummary }) {
 
 // ---- 6. Capsules ----------------------------------------------------------
 
-function CapsulesSection({ summary }: { summary: MonthlySummary }) {
+function CapsulesSection({
+  summary,
+  onOpenCapsule,
+}: {
+  summary: MonthlySummary;
+  onOpenCapsule: (capsule: TimeCapsule) => void;
+}) {
   const startMs = new Date(summary.yearMonth + '-01').getTime();
   const endMs = new Date(summary.year, summary.monthIndex + 1, 1).getTime();
 
@@ -457,7 +530,7 @@ function CapsulesSection({ summary }: { summary: MonthlySummary }) {
           <p className="mb-3 text-xs uppercase tracking-widest text-ink-400">
             这月埋下 · {buried.length}
           </p>
-          <CapsuleGrid capsules={buried} state="sealed" />
+          <CapsuleStack capsules={buried} onOpen={onOpenCapsule} />
         </div>
       )}
       {opened.length > 0 && (
@@ -465,7 +538,7 @@ function CapsulesSection({ summary }: { summary: MonthlySummary }) {
           <p className="mb-3 text-xs uppercase tracking-widest text-ink-400">
             这月开启 · {opened.length}
           </p>
-          <CapsuleGrid capsules={opened} state="open" />
+          <CapsuleGrid capsules={opened} state="open" onOpen={onOpenCapsule} />
         </div>
       )}
     </Section>
@@ -475,27 +548,36 @@ function CapsulesSection({ summary }: { summary: MonthlySummary }) {
 function CapsuleGrid({
   capsules,
   state,
+  onOpen,
 }: {
   capsules: TimeCapsule[];
   state: 'sealed' | 'open';
+  onOpen: (capsule: TimeCapsule) => void;
 }) {
   return (
     <ul className="grid grid-cols-2 gap-3">
       {capsules.map((c) => (
         <li key={c.id} className="flex flex-col items-center gap-2">
-          <LetterEnvelope state={state} width={140}>
-            {state === 'sealed' ? (
-              <p className="font-brush text-lg text-ink-700">待启</p>
-            ) : c.kind === 'text' && c.content_text ? (
-              <p className="line-clamp-3 px-1 font-serif text-xs leading-relaxed text-ink-800">
-                {c.content_text}
-              </p>
-            ) : c.kind === 'image' ? (
-              <PictureCapsuleIcon size={28} color="var(--color-ink-700)" />
-            ) : (
-              <p className="font-brush text-base text-ink-700">启</p>
-            )}
-          </LetterEnvelope>
+          <button
+            type="button"
+            onClick={() => onOpen(c)}
+            className="transition-transform active:scale-95"
+            aria-label="查看时光胶囊"
+          >
+            <LetterEnvelope state={state} width={140}>
+              {state === 'sealed' ? (
+                <p className="font-brush text-lg text-ink-700">待启</p>
+              ) : c.kind === 'text' && c.content_text ? (
+                <p className="line-clamp-3 px-1 font-serif text-xs leading-relaxed text-ink-800">
+                  {c.content_text}
+                </p>
+              ) : c.kind === 'image' ? (
+                <PictureCapsuleIcon size={28} color="var(--color-ink-700)" />
+              ) : (
+                <p className="font-brush text-base text-ink-700">启</p>
+              )}
+            </LetterEnvelope>
+          </button>
         </li>
       ))}
     </ul>

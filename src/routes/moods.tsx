@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
+import { AnimatePresence } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MOOD_PRESETS,
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { InkTextarea } from '@/components/ui/InkTextarea';
 import { MoodIcon } from '@/components/MoodIcon';
 import { SelfieAvatar } from '@/components/SelfieAvatar';
+import { MoodDetail } from '@/components/MoodDetail';
 import { BrushLine } from '@/components/ink/BrushLine';
 
 const moodsQueryKey = ['moods', 'recent'] as const;
@@ -54,6 +56,11 @@ export function Moods() {
   const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Tapped day in the week strip → fullscreen mood viewer (full photo + note).
+  const [detail, setDetail] = useState<{ mood: Mood; label: string } | null>(null);
+  const myLabel = '我';
+  const partnerLabel = partnerQuery.data?.display_name ?? 'TA';
 
   // Selfie capture state — `selfieFile` holds the captured photo until save.
   // `previewUrl` is an object URL for the captured file, rendered as the tile
@@ -229,24 +236,38 @@ export function Moods() {
         ) : (
           <div className="flex flex-col gap-5">
             <Row
-              label="我"
+              label={myLabel}
               dates={dates}
               today={today}
               moodsByKey={moodsByKey}
               userId={myUserId}
               coupleId={coupleId}
+              onOpen={(mood) => setDetail({ mood, label: myLabel })}
             />
             <Row
-              label={partnerQuery.data?.display_name ?? 'TA'}
+              label={partnerLabel}
               dates={dates}
               today={today}
               moodsByKey={moodsByKey}
               userId={partnerQuery.data?.id ?? null}
               coupleId={coupleId}
+              onOpen={(mood) => setDetail({ mood, label: partnerLabel })}
             />
           </div>
         )}
       </section>
+
+      <AnimatePresence>
+        {detail && (
+          <MoodDetail
+            key={`${detail.mood.user_id}|${detail.mood.date}`}
+            mood={detail.mood}
+            coupleId={coupleId}
+            authorLabel={detail.label}
+            onClose={() => setDetail(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -306,9 +327,10 @@ interface RowProps {
   moodsByKey: Map<string, Mood>;
   userId: string | null;
   coupleId: string | null;
+  onOpen: (mood: Mood) => void;
 }
 
-function Row({ label, dates, today, moodsByKey, userId, coupleId }: RowProps) {
+function Row({ label, dates, today, moodsByKey, userId, coupleId, onOpen }: RowProps) {
   return (
     <div>
       <span className="block font-serif text-sm text-ink-500">{label}</span>
@@ -324,6 +346,7 @@ function Row({ label, dates, today, moodsByKey, userId, coupleId }: RowProps) {
                 isToday={isToday}
                 dateLabel={date.slice(8)}
                 coupleId={coupleId}
+                onOpen={onOpen}
               />
             );
           })}
@@ -341,34 +364,63 @@ function Cell({
   isToday,
   dateLabel,
   coupleId,
+  onOpen,
 }: {
   mood: Mood | undefined;
   isToday: boolean;
   dateLabel: string;
   coupleId: string | null;
+  onOpen: (mood: Mood) => void;
 }) {
-  return (
-    <div
-      className={[
-        'flex h-12 w-12 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-full',
-        mood ? 'bg-paper-mist' : 'bg-paper',
-        isToday ? 'ring-2 ring-vermillion-500/60 ring-offset-2 ring-offset-paper-rice' : '',
-      ].join(' ')}
-      title={mood?.note ?? ''}
-    >
-      {mood && mood.emoji === SELFIE_EMOJI && coupleId ? (
-        <SelfieAvatar
-          coupleId={coupleId}
-          userId={mood.user_id}
-          date={mood.date}
-          className="h-9 w-9 rounded-full"
-        />
-      ) : mood ? (
-        <MoodIcon emoji={mood.emoji} className="h-6 w-6" />
-      ) : (
-        <span className="text-ink-300">·</span>
+  const className = [
+    'flex h-12 w-12 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-full',
+    mood ? 'bg-paper-mist' : 'bg-paper',
+    isToday ? 'ring-2 ring-vermillion-500/60 ring-offset-2 ring-offset-paper-rice' : '',
+  ].join(' ');
+
+  const face =
+    mood && mood.emoji === SELFIE_EMOJI && coupleId ? (
+      <SelfieAvatar
+        coupleId={coupleId}
+        userId={mood.user_id}
+        date={mood.date}
+        className="h-9 w-9 rounded-full"
+      />
+    ) : mood ? (
+      <MoodIcon emoji={mood.emoji} className="h-6 w-6" />
+    ) : (
+      <span className="text-ink-300">·</span>
+    );
+
+  // A note (text) lives behind a tap, so flag days that have one with a small
+  // dot beside the date — otherwise there's no sign there's anything to open.
+  const dateRow = (
+    <span className="flex items-center gap-0.5 text-[10px] leading-none text-ink-400">
+      {mood?.note && (
+        <span className="h-1 w-1 rounded-full bg-vermillion-500/70" aria-hidden />
       )}
-      <span className="text-[10px] leading-none text-ink-400">{dateLabel}</span>
-    </div>
+      {dateLabel}
+    </span>
+  );
+
+  if (!mood) {
+    return (
+      <div className={className}>
+        {face}
+        {dateRow}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${className} transition-transform active:scale-95`}
+      onClick={() => onOpen(mood)}
+      aria-label={`查看${dateLabel}日的心情`}
+    >
+      {face}
+      {dateRow}
+    </button>
   );
 }
