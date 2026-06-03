@@ -8,7 +8,13 @@ import {
   type MonthlySummary,
 } from '@/lib/summaries';
 import { useSessionStore } from '@/stores/session';
-import { MONTH_NAMES_CN } from '@/lib/dates';
+import {
+  MONTH_NAMES_CN,
+  currentYearMonth,
+  prevYearMonth,
+  nextYearMonth,
+  SUMMARY_FLOOR_YEAR_MONTH,
+} from '@/lib/dates';
 import { SELFIE_EMOJI } from '@/lib/mood-selfies';
 import type { Mood } from '@/lib/moods';
 import type { Wish } from '@/lib/wishes';
@@ -169,8 +175,41 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ---- 1. Title -------------------------------------------------------------
 
+/** Chevron that links to an adjacent month, or renders disabled when `to` is null. */
+function MonthNavArrow({
+  to,
+  label,
+  children,
+}: {
+  to: string | null;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const base =
+    'flex h-9 w-9 items-center justify-center rounded-full font-brush text-3xl leading-none transition-colors';
+  if (!to) {
+    return (
+      <span className={`${base} text-ink-200`} aria-hidden>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      className={`${base} text-ink-400 hover:bg-blush-50 hover:text-ink-700`}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function TitleSection({ summary }: { summary: MonthlySummary }) {
   const monthLabel = MONTH_NAMES_CN[summary.monthIndex];
+  const isCurrentMonth = summary.yearMonth === currentYearMonth();
+  const canGoPrev = summary.yearMonth > SUMMARY_FLOOR_YEAR_MONTH;
+  const canGoNext = !isCurrentMonth;
   return (
     <Section className="mt-6">
       <BleedFrame intensity="strong" radius={24} className="rounded-3xl">
@@ -180,11 +219,25 @@ function TitleSection({ summary }: { summary: MonthlySummary }) {
           </div>
           <div className="px-6 py-6 text-center">
             <p className="text-xs uppercase tracking-widest text-ink-400">
-              本月总结 · {summary.year}
+              {isCurrentMonth ? '本月总结' : '月度总结'} · {summary.year}
             </p>
-            <p className="mt-2 font-brush text-6xl leading-none text-ink-900">
-              {monthLabel}
-            </p>
+            <div className="mt-2 flex items-center justify-center gap-4">
+              <MonthNavArrow
+                to={canGoPrev ? `/summary/${prevYearMonth(summary.yearMonth)}` : null}
+                label="上个月"
+              >
+                ‹
+              </MonthNavArrow>
+              <p className="font-brush text-6xl leading-none text-ink-900">
+                {monthLabel}
+              </p>
+              <MonthNavArrow
+                to={canGoNext ? `/summary/${nextYearMonth(summary.yearMonth)}` : null}
+                label="下个月"
+              >
+                ›
+              </MonthNavArrow>
+            </div>
             {summary.theme && (
               <p className="mt-3 font-brush text-2xl text-vermillion-500">
                 「{summary.theme.title}」

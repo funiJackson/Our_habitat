@@ -19,6 +19,19 @@ export function currentYearMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Earliest month the summary archive goes back to ("YYYY-MM"). */
+export const SUMMARY_FLOOR_YEAR_MONTH = '2026-05';
+
+/** Shift a "YYYY-MM" string by ±N months; year rolls over automatically. */
+export function shiftYearMonth(yearMonth: string, delta: number): string {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export const prevYearMonth = (ym: string) => shiftYearMonth(ym, -1);
+export const nextYearMonth = (ym: string) => shiftYearMonth(ym, 1);
+
 /** Last calendar day-of-month for the given (year, 1-indexed month). */
 export function lastDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
