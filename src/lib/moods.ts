@@ -26,23 +26,16 @@ export const moodInputSchema = z.object({
 export type MoodInput = z.infer<typeof moodInputSchema>;
 
 /**
- * Twelve hand-drawn smileys from the Streamline Freehand set on Figma.
- * Stored value is the kebab-case key, rendered via <MoodIcon>.
+ * A day recorded with words but no photo. `emoji` is NOT NULL in the schema and
+ * doubles as "what kind of entry is this", so text-only days get their own key
+ * rather than an empty string — the week strip renders it as an ink-stroke
+ * glyph via <MoodIcon>.
+ *
+ * The twelve hand-drawn smileys that used to be pickable are gone from the UI
+ * (M4: the check-in became a diary), but <MoodIcon> still maps their keys so
+ * historical rows keep rendering.
  */
-export const MOOD_PRESETS = [
-  { id: 'lol' },
-  { id: 'smile' },
-  { id: 'blessed' },
-  { id: 'blush' },
-  { id: 'wink' },
-  { id: 'cheeky' },
-  { id: 'kiss-heart' },
-  { id: 'eyes-only' },
-  { id: 'grumpy' },
-  { id: 'crazy' },
-  { id: 'crying' },
-  { id: 'selfie' },
-] as const;
+export const NOTE_EMOJI = 'note';
 
 async function currentContext(): Promise<{ userId: string; coupleId: string }> {
   const { data: { user } } = await supabase.auth.getUser();

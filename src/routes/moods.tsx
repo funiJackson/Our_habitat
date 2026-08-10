@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { AnimatePresence } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  MOOD_PRESETS,
+  NOTE_EMOJI,
   fetchPartner,
   fetchRecentMoods,
   recentDates,
@@ -18,6 +18,7 @@ import { InkTextarea } from '@/components/ui/InkTextarea';
 import { MoodIcon } from '@/components/MoodIcon';
 import { SelfieAvatar } from '@/components/SelfieAvatar';
 import { MoodDetail } from '@/components/MoodDetail';
+import { SelfieCamera } from '@/components/SelfieCamera';
 import { BrushLine } from '@/components/ink/BrushLine';
 
 const moodsQueryKey = ['moods', 'recent'] as const;
@@ -53,22 +54,33 @@ export function Moods() {
   const coupleId = (moodsQuery.data ?? [])[0]?.couple_id ?? null;
 
   const myToday = myUserId ? moodsByKey.get(`${myUserId}|${today}`) : undefined;
-  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Seed the diary field from today's saved entry — once. After that the
+  // textarea is the source of truth, so clearing it to empty actually sticks
+  // (a `??` fallback would keep resurrecting the saved text).
+  const noteSeeded = useRef(false);
+  useEffect(() => {
+    if (noteSeeded.current || !moodsQuery.isSuccess) return;
+    noteSeeded.current = true;
+    if (myToday?.note) setNote(myToday.note);
+  }, [moodsQuery.isSuccess, myToday?.note]);
 
   // Tapped day in the week strip → fullscreen mood viewer (full photo + note).
   const [detail, setDetail] = useState<{ mood: Mood; label: string } | null>(null);
   const myLabel = '我';
   const partnerLabel = partnerQuery.data?.display_name ?? 'TA';
 
-  // Selfie capture state — `selfieFile` holds the captured photo until save.
-  // `previewUrl` is an object URL for the captured file, rendered as the tile
-  // face while the user is reviewing the shot. Cleared on save / cancel so the
-  // camera icon comes back.
+  // Photo state — `selfieFile` holds a freshly shot photo until save;
+  // `previewUrl` is its object URL, shown in the polaroid slot. `photoCleared`
+  // lets you drop a photo that's already saved: the entry falls back to
+  // text-only on the next save (the storage object is simply left orphaned).
   const selfieInputRef = useRef<HTMLInputElement>(null);
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [photoCleared, setPhotoCleared] = useState(false);
 
   useEffect(() => {
     if (!selfieFile) {
@@ -80,35 +92,44 @@ export function Moods() {
     return () => URL.revokeObjectURL(url);
   }, [selfieFile]);
 
-  const effectiveEmoji = selectedEmoji ?? myToday?.emoji ?? null;
-  const effectiveNote = selectedEmoji === null && note === '' ? (myToday?.note ?? '') : note;
+  /** A photo already saved for today, still wanted. */
+  const hasSavedPhoto = myToday?.emoji === SELFIE_EMOJI && !photoCleared;
+  const hasPhoto = !!selfieFile || hasSavedPhoto;
+  const canSave = note.trim().length > 0 || hasPhoto;
 
-  function onSelfieTile() {
-    setSelectedEmoji(SELFIE_EMOJI);
+  /** Camera unavailable (permission denied / unsupported) → OS picker instead.
+   *  The input has no `capture` attribute on purpose, so the sheet offers the
+   *  photo library rather than forcing the flash-happy system camera. */
+  const onCameraFallback = useCallback(() => {
+    setCameraOpen(false);
     selfieInputRef.current?.click();
-  }
+  }, []);
 
-  async function onSelfieFile(e: ChangeEvent<HTMLInputElement>) {
+  const onCameraCapture = useCallback((f: File) => {
+    setSelfieFile(f);
+    setPhotoCleared(false);
+    setCameraOpen(false);
+  }, []);
+
+  function onSelfieFile(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     setSelfieFile(f);
-    setSelectedEmoji(SELFIE_EMOJI);
+    setPhotoCleared(false);
     if (selfieInputRef.current) selfieInputRef.current.value = '';
   }
 
   async function save() {
-    if (!effectiveEmoji) {
-      setErrorMsg('选一个心情吧');
+    const text = note.trim();
+    if (!text && !hasPhoto) {
+      setErrorMsg('写点什么，或者拍一张');
       return;
     }
     setErrorMsg(null);
     try {
-      // For selfie mood: upload the captured file first (if any) before saving.
-      // If user re-selected selfie without retaking and one already exists, we
-      // skip the upload and just (re)save the mood row.
-      if (effectiveEmoji === SELFIE_EMOJI && selfieFile) {
+      if (selfieFile) {
         await uploadMoodSelfie(selfieFile, today);
-        // Path is the same each time (one selfie per user/date), so the cached
+        // Path is the same each time (one photo per user/date), so the cached
         // signed URL still works — but the bytes behind it changed. Invalidate
         // so SelfieAvatar refetches a new signed URL (different JWT) and the
         // browser image cache misses, picking up the new photo.
@@ -118,18 +139,14 @@ export function Moods() {
           });
         }
       }
-      if (effectiveEmoji === SELFIE_EMOJI && !selfieFile && myToday?.emoji !== SELFIE_EMOJI) {
-        setErrorMsg('请先自拍一张');
-        return;
-      }
       await upsertMut.mutateAsync({
         date: today,
-        emoji: effectiveEmoji,
-        note: effectiveNote.trim() ? effectiveNote.trim() : undefined,
+        emoji: hasPhoto ? SELFIE_EMOJI : NOTE_EMOJI,
+        note: text ? text : undefined,
       });
-      setSelectedEmoji(null);
-      setNote('');
-      setSelfieFile(null);
+      // Deliberately keep the text and the photo on screen — it's a diary page,
+      // not a form; you should still see what you just wrote.
+      setPhotoCleared(false);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : '保存失败');
     }
@@ -139,7 +156,7 @@ export function Moods() {
     <div className="mx-auto max-w-md px-6 py-10">
       <header className="mb-8 flex items-center justify-between">
         <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
-        <h1 className="font-brush text-3xl text-ink-800">心情打卡</h1>
+        <h1 className="font-brush text-4xl leading-none text-ink-800">绪</h1>
         <span className="w-12" aria-hidden />
       </header>
 
@@ -147,81 +164,58 @@ export function Moods() {
         ref={selfieInputRef}
         type="file"
         accept="image/*"
-        capture="user"
         className="hidden"
         onChange={onSelfieFile}
       />
 
       <section className="mb-10">
-        <p className="text-xs uppercase tracking-widest text-ink-400">今天</p>
-        <p className="mt-2 font-serif text-xl leading-relaxed text-ink-800">
-          {myToday ? '换个心情？' : '你今天心情怎么样？'}
-        </p>
-
-        <div className="mt-6 grid grid-cols-4 gap-3">
-          {MOOD_PRESETS.map((p) => {
-            const isActive = effectiveEmoji === p.id;
-            const isSelfie = p.id === SELFIE_EMOJI;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  if (isSelfie) onSelfieTile();
-                  else setSelectedEmoji(p.id);
-                }}
-                className={[
-                  'relative flex aspect-square items-center justify-center rounded-2xl transition-all',
-                  isActive
-                    ? 'bg-paper-mist scale-[1.04] shadow-sm'
-                    : 'bg-paper hover:bg-paper-mist/60',
-                ].join(' ')}
-                aria-pressed={isActive}
-              >
-                {isSelfie && previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt=""
-                    className="absolute inset-0 h-full w-full rounded-2xl object-cover"
-                  />
-                ) : isSelfie ? (
-                  <CameraIcon className="h-9 w-9 text-ink-700" />
-                ) : (
-                  <MoodIcon emoji={p.id} className="h-10 w-10" />
-                )}
-                {isActive && (
-                  <span
-                    className="absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-sm bg-vermillion-500 text-[8px] font-brush leading-none text-paper-rice"
-                    aria-hidden
-                  >
-                    印
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="flex items-baseline gap-3">
+          <h2 className="font-brush text-3xl leading-none text-ink-800">{dayLabel(today)}</h2>
+          <span className="font-serif text-sm text-ink-400">{weekdayLabel(today)}</span>
+        </div>
+        <div className="mt-3 opacity-70">
+          <BrushLine orientation="h" length="100%" color="var(--color-ink-wash-2)" />
         </div>
 
-        <div className="mt-6">
+        <div className="mt-4">
           <InkTextarea
-            placeholder="想说点什么…"
-            value={effectiveNote}
+            placeholder="今天…"
+            value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={500}
-            rows={2}
+            rows={7}
           />
         </div>
 
-        {errorMsg && <p className="mt-2 text-sm text-vermillion-500">{errorMsg}</p>}
+        <div className="mt-7 flex items-center gap-4">
+          <PhotoSlot
+            previewUrl={previewUrl}
+            savedPhoto={
+              hasSavedPhoto && !selfieFile && coupleId && myUserId
+                ? { coupleId, userId: myUserId, date: today }
+                : null
+            }
+            onShoot={() => setCameraOpen(true)}
+            onClear={() => {
+              setSelfieFile(null);
+              setPhotoCleared(true);
+            }}
+          />
+          <p className="font-serif text-xs leading-relaxed text-ink-400">
+            {hasPhoto ? '点照片可以重拍' : '也可以拍一张'}
+          </p>
+        </div>
+
+        {errorMsg && <p className="mt-4 text-sm text-vermillion-500">{errorMsg}</p>}
 
         <Button
           className="mt-6 w-full"
           size="lg"
           onClick={save}
           isLoading={upsertMut.isPending}
-          disabled={!effectiveEmoji}
+          disabled={!canSave}
         >
-          {myToday ? '更新心情' : '记下来'}
+          {myToday ? '改一改' : '记下来'}
         </Button>
       </section>
 
@@ -258,6 +252,16 @@ export function Moods() {
       </section>
 
       <AnimatePresence>
+        {cameraOpen && (
+          <SelfieCamera
+            onCapture={onCameraCapture}
+            onClose={() => setCameraOpen(false)}
+            onFallback={onCameraFallback}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {detail && (
           <MoodDetail
             key={`${detail.mood.user_id}|${detail.mood.date}`}
@@ -273,7 +277,93 @@ export function Moods() {
 }
 
 // ---------------------------------------------------------------------------
-// Camera icon — sits on the selfie tile permanently
+// Photo slot — camera button that becomes a polaroid once there's a photo
+// ---------------------------------------------------------------------------
+
+interface PhotoSlotProps {
+  /** Object URL of a photo shot this session, not yet saved. */
+  previewUrl: string | null;
+  /** Today's already-saved photo, when there's no fresher one to show. */
+  savedPhoto: { coupleId: string; userId: string; date: string } | null;
+  onShoot: () => void;
+  onClear: () => void;
+}
+
+/**
+ * Empty, it's a quiet ink camera on a paper tile. With a photo, it turns into a
+ * little polaroid taped into the page — white border, bottom margin, tilted a
+ * few degrees, with a vermillion 印 pressed into the corner. Tapping it retakes;
+ * the × peels it off. The tilt straightens on hover/press so it feels physical.
+ */
+function PhotoSlot({ previewUrl, savedPhoto, onShoot, onClear }: PhotoSlotProps) {
+  if (!previewUrl && !savedPhoto) {
+    return (
+      <button
+        type="button"
+        onClick={onShoot}
+        aria-label="拍一张"
+        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-paper transition-colors hover:bg-paper-mist"
+      >
+        <CameraIcon className="h-8 w-8 text-ink-600" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onShoot}
+        aria-label="重拍"
+        className="block -rotate-3 rounded-[3px] bg-paper-rice p-1.5 pb-5 shadow-[0_6px_16px_rgba(42,38,34,0.16)] transition-transform duration-200 hover:-rotate-1 active:rotate-0"
+      >
+        {previewUrl ? (
+          <img src={previewUrl} alt="" className="h-16 w-16 object-cover" />
+        ) : savedPhoto ? (
+          <SelfieAvatar
+            coupleId={savedPhoto.coupleId}
+            userId={savedPhoto.userId}
+            date={savedPhoto.date}
+            className="h-16 w-16"
+          />
+        ) : null}
+        <span
+          className="absolute -right-2 -top-2 inline-flex h-5 w-5 rotate-6 items-center justify-center rounded-sm bg-vermillion-500 text-[10px] font-brush leading-none text-paper-rice shadow-sm"
+          aria-hidden
+        >
+          印
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="不要这张了"
+        className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-ink-700/85 text-[11px] leading-none text-paper-rice"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Date helpers
+// ---------------------------------------------------------------------------
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
+
+function dayLabel(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${Number(m)}月${Number(d)}日`;
+}
+
+function weekdayLabel(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return WEEKDAYS[new Date(y, m - 1, d).getDay()];
+}
+
+// ---------------------------------------------------------------------------
+// Camera icon
 // ---------------------------------------------------------------------------
 
 function CameraIcon({ className = '' }: { className?: string }) {
