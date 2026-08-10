@@ -92,7 +92,7 @@ export function Wishes() {
     <div className="mx-auto max-w-md px-6 py-10">
       <header className="mb-8 flex items-center justify-between">
         <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
-        <h1 className="font-brush text-3xl text-ink-800">清单</h1>
+        <h1 className="font-brush text-4xl leading-none text-ink-800">笺</h1>
         <span className="text-sm text-ink-300">{todo.length}/{todo.length + done.length}</span>
       </header>
 

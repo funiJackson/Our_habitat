@@ -105,7 +105,7 @@ export function Memories() {
     <div className="mx-auto max-w-md px-6 py-10">
       <header className="mb-6 flex items-center justify-between">
         <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
-        <h1 className="font-brush text-3xl text-ink-800">回忆</h1>
+        <h1 className="font-brush text-4xl leading-none text-ink-800">拾</h1>
         <span className="text-sm text-ink-300">{items.length}</span>
       </header>
 
