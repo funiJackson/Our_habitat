@@ -15,6 +15,7 @@ import { useNowTick } from '@/lib/hooks';
 import { useSessionStore } from '@/stores/session';
 import { Input } from '@/components/ui/Input';
 import { InkTextarea } from '@/components/ui/InkTextarea';
+import { BrushLine } from '@/components/ink/BrushLine';
 import { LetterEnvelope } from '@/components/ink/LetterEnvelope';
 import { RedString } from '@/components/ink/RedString';
 import {
@@ -124,7 +125,7 @@ function ListView({ myId, partnerName, capsules, onCreate, onReveal, error }: Li
     <div className="mx-auto max-w-md px-6 py-10 pb-28">
       <header className="mb-8 flex items-center justify-between">
         <Link to="/" className="text-sm text-ink-500 hover:text-ink-700">←</Link>
-        <h1 className="font-brush text-3xl text-ink-800">时光胶囊</h1>
+        <h1 className="font-brush text-4xl leading-none text-ink-800">缄</h1>
         <span className="text-sm text-ink-300">
           {ready.length + locked.length + archive.length}
         </span>
@@ -171,7 +172,7 @@ function ListView({ myId, partnerName, capsules, onCreate, onReveal, error }: Li
           )}
 
           {archive.length > 0 && (
-            <Section title="时光留念">
+            <Section title="想穿越时空拥抱你">
               {archive.map((c) => (
                 <CapsuleRow
                   key={c.id}
@@ -399,7 +400,7 @@ function CreateView({ myId, partnerId, partnerName, onDone }: CreateViewProps) {
         >
           ← 取消
         </button>
-        <h1 className="font-brush text-3xl text-ink-800">写胶囊</h1>
+        <h1 className="font-brush text-3xl text-ink-800">写给ta</h1>
         <span className="w-12" />
       </header>
 
@@ -459,11 +460,21 @@ interface ToggleProps<T extends string> {
   options: ToggleOption<T>[];
 }
 
+/**
+ * Recipient picker written as an envelope's address line rather than a control:
+ * the chosen name sits in ink under a brush stroke, the other waits beside it in
+ * a lighter wash. No fills, no borders — the same language as InkTextarea and
+ * Input, which are also just text over a calligraphic baseline.
+ */
 function Toggle<T extends string>({ label, value, onChange, options }: ToggleProps<T>) {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs uppercase tracking-widest text-ink-400">{label}</span>
-      <div className="flex gap-2">
+      <div
+        className="flex flex-wrap items-end gap-x-8 gap-y-3"
+        role="radiogroup"
+        aria-label={label}
+      >
         {options.map((opt) => {
           const active = value === opt.value;
           return (
@@ -471,19 +482,38 @@ function Toggle<T extends string>({ label, value, onChange, options }: TogglePro
               key={opt.value}
               type="button"
               onClick={() => onChange(opt.value)}
-              className={[
-                'flex-1 rounded-2xl px-4 py-2.5 font-serif text-sm transition-colors',
-                active
-                  ? 'bg-ink-700 text-paper-rice'
-                  : 'bg-paper-mist text-ink-700 hover:bg-paper-edge',
-              ].join(' ')}
-              aria-pressed={active}
+              role="radio"
+              aria-checked={active}
+              className="group relative pb-2 text-left focus:outline-none"
             >
-              {opt.label}
+              <span
+                className={[
+                  'block font-serif transition-all duration-300',
+                  active
+                    ? 'text-xl text-ink-800'
+                    : 'text-base text-ink-400 group-hover:text-ink-600',
+                ].join(' ')}
+              >
+                {opt.label}
+              </span>
+              {/* The stroke is always mounted so the two states cross-fade
+                  instead of the row jumping when the line appears. */}
+              <span
+                className="pointer-events-none absolute inset-x-0 bottom-0 block transition-opacity duration-300"
+                style={{ opacity: active ? 1 : 0 }}
+                aria-hidden
+              >
+                <BrushLine
+                  orientation="h"
+                  length="100%"
+                  color="var(--color-ink-wash-5)"
+                />
+              </span>
             </button>
           );
         })}
       </div>
+      <span className="font-serif text-xs text-ink-300">点名字可以换人</span>
     </div>
   );
 }
